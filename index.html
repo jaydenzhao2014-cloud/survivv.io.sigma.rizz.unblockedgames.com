@@ -239,6 +239,7 @@
                 <p><strong>Controls:</strong></p>
                 <p>WASD - Move | Mouse - Aim | Click - Shoot</p>
                 <p>Walk over weapons to pick them up</p>
+                <p>Enter buildings through the door openings!</p>
             </div>
         </div>
 
@@ -468,7 +469,7 @@
                 if (newX - this.size < 0 || newX + this.size > game.worldSize) dx = 0;
                 if (newY - this.size < 0 || newY + this.size > game.worldSize) dy = 0;
 
-                // Check building collision
+                // Check building collision with door consideration
                 let canMove = true;
                 buildings.forEach(building => {
                     if (this.checkBuildingCollision(newX, newY, building)) {
@@ -493,10 +494,68 @@
             }
 
             checkBuildingCollision(x, y, building) {
-                return x + this.size > building.x &&
-                       x - this.size < building.x + building.width &&
-                       y + this.size > building.y &&
-                       y - this.size < building.y + building.height;
+                // Check if player is colliding with building
+                const colliding = x + this.size > building.x &&
+                                 x - this.size < building.x + building.width &&
+                                 y + this.size > building.y &&
+                                 y - this.size < building.y + building.height;
+
+                if (!colliding) return false;
+
+                // Check if player is in the door area
+                const door = building.door;
+                const inDoor = x + this.size > door.x &&
+                              x - this.size < door.x + door.width &&
+                              y + this.size > door.y &&
+                              y - this.size < door.y + door.height;
+
+                // If in door, allow movement
+                if (inDoor) return false;
+
+                // Check walls individually to create hollow building
+                const wallThickness = 15;
+
+                // Left wall
+                if (x - this.size < building.x + wallThickness &&
+                    x + this.size > building.x) {
+                    // Check if in door opening on left side
+                    if (door.side === 3 && y > door.y && y < door.y + door.height) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Right wall
+                if (x + this.size > building.x + building.width - wallThickness &&
+                    x - this.size < building.x + building.width) {
+                    // Check if in door opening on right side
+                    if (door.side === 1 && y > door.y && y < door.y + door.height) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Top wall
+                if (y - this.size < building.y + wallThickness &&
+                    y + this.size > building.y) {
+                    // Check if in door opening on top side
+                    if (door.side === 0 && x > door.x && x < door.x + door.width) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Bottom wall
+                if (y + this.size > building.y + building.height - wallThickness &&
+                    y - this.size < building.y + building.height) {
+                    // Check if in door opening on bottom side
+                    if (door.side === 2 && x > door.x && x < door.x + door.width) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                return false;
             }
 
             shoot() {
@@ -640,11 +699,23 @@
                     return;
                 }
 
-                // Check building collision
+                // Check building collision (bullets hit walls)
                 buildings.forEach(building => {
+                    const wallThickness = 15;
+
+                    // Check if bullet is inside building bounds
                     if (this.x > building.x && this.x < building.x + building.width &&
                         this.y > building.y && this.y < building.y + building.height) {
-                        this.dead = true;
+
+                        // Check if it hit a wall (not in the hollow center)
+                        const hitLeftWall = this.x < building.x + wallThickness;
+                        const hitRightWall = this.x > building.x + building.width - wallThickness;
+                        const hitTopWall = this.y < building.y + wallThickness;
+                        const hitBottomWall = this.y > building.y + building.height - wallThickness;
+
+                        if (hitLeftWall || hitRightWall || hitTopWall || hitBottomWall) {
+                            this.dead = true;
+                        }
                     }
                 });
 
@@ -687,9 +758,42 @@
                 const x = Math.random() * (game.worldSize - width);
                 const y = Math.random() * (game.worldSize - height);
 
+                // Determine door side (0=top, 1=right, 2=bottom, 3=left)
+                const doorSide = Math.floor(Math.random() * 4);
+                const doorWidth = 45;
+                let doorX, doorY, doorW, doorH;
+
+                switch(doorSide) {
+                    case 0: // Top
+                        doorX = x + width / 2 - doorWidth / 2;
+                        doorY = y;
+                        doorW = doorWidth;
+                        doorH = 15;
+                        break;
+                    case 1: // Right
+                        doorX = x + width - 15;
+                        doorY = y + height / 2 - doorWidth / 2;
+                        doorW = 15;
+                        doorH = doorWidth;
+                        break;
+                    case 2: // Bottom
+                        doorX = x + width / 2 - doorWidth / 2;
+                        doorY = y + height - 15;
+                        doorW = doorWidth;
+                        doorH = 15;
+                        break;
+                    case 3: // Left
+                        doorX = x;
+                        doorY = y + height / 2 - doorWidth / 2;
+                        doorW = 15;
+                        doorH = doorWidth;
+                        break;
+                }
+
                 buildings.push({
                     x, y, width, height,
-                    color: `rgb(${100 + Math.random() * 50}, ${80 + Math.random() * 40}, ${60 + Math.random() * 30})`
+                    color: `rgb(${100 + Math.random() * 50}, ${80 + Math.random() * 40}, ${60 + Math.random() * 30})`,
+                    door: { x: doorX, y: doorY, width: doorW, height: doorH, side: doorSide }
                 });
             }
         }
@@ -699,7 +803,19 @@
             weapons = [];
             const weaponTypes = Object.keys(WEAPONS);
 
-            for (let i = 0; i < 40; i++) {
+            // Place some weapons inside buildings
+            buildings.forEach(building => {
+                if (Math.random() < 0.6) { // 60% chance to have weapon inside
+                    weapons.push({
+                        x: building.x + building.width / 2 + (Math.random() - 0.5) * (building.width - 60),
+                        y: building.y + building.height / 2 + (Math.random() - 0.5) * (building.height - 60),
+                        type: weaponTypes[Math.floor(Math.random() * weaponTypes.length)]
+                    });
+                }
+            });
+
+            // Place remaining weapons outside
+            for (let i = 0; i < 25; i++) {
                 weapons.push({
                     x: Math.random() * game.worldSize,
                     y: Math.random() * game.worldSize,
@@ -778,15 +894,56 @@
                 ctx.stroke();
             }
 
-            // Draw buildings
+            // Draw buildings with hollow interiors
             buildings.forEach(building => {
+                const wallThickness = 15;
+
+                // Draw building walls
                 ctx.fillStyle = building.color;
+
+                // Left wall
+                ctx.fillRect(
+                    building.x - game.camera.x,
+                    building.y - game.camera.y,
+                    wallThickness,
+                    building.height
+                );
+
+                // Right wall
+                ctx.fillRect(
+                    building.x - game.camera.x + building.width - wallThickness,
+                    building.y - game.camera.y,
+                    wallThickness,
+                    building.height
+                );
+
+                // Top wall
                 ctx.fillRect(
                     building.x - game.camera.x,
                     building.y - game.camera.y,
                     building.width,
-                    building.height
+                    wallThickness
                 );
+
+                // Bottom wall
+                ctx.fillRect(
+                    building.x - game.camera.x,
+                    building.y - game.camera.y + building.height - wallThickness,
+                    building.width,
+                    wallThickness
+                );
+
+                // Draw door opening (darker color to show it's a door)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                const door = building.door;
+                ctx.fillRect(
+                    door.x - game.camera.x,
+                    door.y - game.camera.y,
+                    door.width,
+                    door.height
+                );
+
+                // Draw building outline
                 ctx.strokeStyle = '#000';
                 ctx.lineWidth = 3;
                 ctx.strokeRect(
@@ -794,6 +951,15 @@
                     building.y - game.camera.y,
                     building.width,
                     building.height
+                );
+
+                // Draw floor (semi-transparent)
+                ctx.fillStyle = 'rgba(101, 67, 33, 0.3)';
+                ctx.fillRect(
+                    building.x - game.camera.x + wallThickness,
+                    building.y - game.camera.y + wallThickness,
+                    building.width - wallThickness * 2,
+                    building.height - wallThickness * 2
                 );
             });
 
