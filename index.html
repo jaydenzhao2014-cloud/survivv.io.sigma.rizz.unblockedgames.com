@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survev.io - Battle Royale</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a1a;
+            overflow: hidden;
+            color: white;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: #2d5016;
+            cursor: crosshair;
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #leaderboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 200px;
+            border: 2px solid #4CAF50;
+        }
+
+        #leaderboard h3 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .leaderboard-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+            font-size: 14px;
+        }
+
+        .leaderboard-entry:last-child {
+            border-bottom: none;
+        }
+
+        .leaderboard-entry.current-player {
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        #playerStats {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #FF5722;
+        }
+
+        #healthBar {
+            width: 200px;
+            height: 25px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 2px solid #fff;
+        }
+
+        #healthFill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF5722, #FF9800);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        #weaponInfo {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        #killFeed {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            max-width: 300px;
+        }
+
+        .kill-message {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            border-left: 3px solid #F44336;
+            animation: slideIn 0.3s;
+            font-size: 13px;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        #deathScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: all;
+        }
+
+        #deathScreen.show {
+            display: flex;
+        }
+
+        #deathScreen h1 {
+            color: #F44336;
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        #deathScreen button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #deathScreen button:hover {
+            background: #45a049;
+        }
+
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d5016 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: all;
+        }
+
+        #startScreen h1 {
+            font-size: 64px;
+            color: #4CAF50;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        #startScreen input {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #startScreen button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #startScreen button:hover {
+            background: #45a049;
+        }
+
+        .controls {
+            margin-top: 30px;
+            text-align: center;
+            color: #aaa;
+        }
+
+        .controls p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui">
+        <div id="startScreen">
+            <h1>SURVEV.IO</h1>
+            <input type="text" id="playerName" placeholder="Enter your name" maxlength="15" value="Player">
+            <button id="startButton">START GAME</button>
+            <div class="controls">
+                <p><strong>Controls:</strong></p>
+                <p>WASD - Move | Mouse - Aim | Click - Shoot</p>
+                <p>Walk over weapons to pick them up</p>
+            </div>
+        </div>
+
+        <div id="deathScreen">
+            <h1>YOU DIED</h1>
+            <div id="finalStats"></div>
+            <button id="respawnButton">RESPAWN</button>
+        </div>
+
+        <div id="leaderboard">
+            <h3>🏆 LEADERBOARD</h3>
+            <div id="leaderboardList"></div>
+        </div>
+
+        <div id="killFeed"></div>
+
+        <div id="playerStats">
+            <div id="healthBar">
+                <div id="healthFill">100 HP</div>
+            </div>
+            <div id="weaponInfo">
+                <div>Weapon: <span id="currentWeapon">None</span></div>
+                <div>Kills: <span id="killCount">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Game state
+        const game = {
+            running: false,
+            started: false,
+            camera: { x: 0, y: 0 },
+            worldSize: 3000,
+            mouse: { x: 0, y: 0, worldX: 0, worldY: 0 },
+            keys: {},
+            playerName: 'Player'
+        };
+
+        // Weapon types
+        const WEAPONS = {
+            pistol: {
+                name: 'Pistol',
+                damage: 20,
+                fireRate: 300,
+                bulletSpeed: 12,
+                color: '#888',
+                spread: 0.05
+            },
+            rifle: {
+                name: 'Rifle',
+                damage: 15,
+                fireRate: 150,
+                bulletSpeed: 15,
+                color: '#00ff00',
+                spread: 0.08
+            },
+            shotgun: {
+                name: 'Shotgun',
+                damage: 12,
+                fireRate: 600,
+                bulletSpeed: 10,
+                color: '#ff0000',
+                spread: 0.3,
+                pellets: 8
+            },
+            sniper: {
+                name: 'Sniper',
+                damage: 60,
+                fireRate: 1000,
+                bulletSpeed: 25,
+                color: '#0088ff',
+                spread: 0.01
+            }
+        };
+
+        // Player
+        let player = null;
+
+        class Player {
+            constructor(x, y, name, isPlayer = true) {
+                this.x = x;
+                this.y = y;
+                this.size = 20;
+                this.speed = 3;
+                this.health = 100;
+                this.maxHealth = 100;
+                this.weapon = null;
+                this.lastShot = 0;
+                this.kills = 0;
+                this.name = name;
+                this.isPlayer = isPlayer;
+                this.angle = 0;
+                this.dead = false;
+                this.color = isPlayer ? '#4CAF50' : `hsl(${Math.random() * 360}, 70%, 60%)`;
+
+                // AI properties
+                this.target = null;
+                this.targetWeapon = null;
+                this.aiTimer = 0;
+            }
+
+            update() {
+                if (this.dead) return;
+
+                if (this.isPlayer) {
+                    this.updatePlayer();
+                } else {
+                    this.updateAI();
+                }
+            }
+
+            updatePlayer() {
+                let dx = 0, dy = 0;
+                if (game.keys['w'] || game.keys['W']) dy -= 1;
+                if (game.keys['s'] || game.keys['S']) dy += 1;
+                if (game.keys['a'] || game.keys['A']) dx -= 1;
+                if (game.keys['d'] || game.keys['D']) dx += 1;
+
+                if (dx !== 0 || dy !== 0) {
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    dx /= len;
+                    dy /= len;
+                    this.move(dx, dy);
+                }
+
+                // Aim at mouse
+                this.angle = Math.atan2(game.mouse.worldY - this.y, game.mouse.worldX - this.x);
+            }
+
+            updateAI() {
+                this.aiTimer++;
+
+                // Find weapon if don't have one
+                if (!this.weapon && this.aiTimer % 20 === 0) {
+                    let closest = null;
+                    let closestDist = Infinity;
+                    weapons.forEach(w => {
+                        const dist = Math.hypot(w.x - this.x, w.y - this.y);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closest = w;
+                        }
+                    });
+                    this.targetWeapon = closest;
+                }
+
+                // Move to weapon
+                if (!this.weapon && this.targetWeapon) {
+                    const dx = this.targetWeapon.x - this.x;
+                    const dy = this.targetWeapon.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 5) {
+                        this.move(dx / dist, dy / dist);
+                    }
+                } else {
+                    this.targetWeapon = null;
+                }
+
+                // Find target player
+                if (this.weapon && this.aiTimer % 30 === 0) {
+                    let closest = null;
+                    let closestDist = Infinity;
+
+                    const checkPlayer = (p) => {
+                        if (p.dead) return;
+                        const dist = Math.hypot(p.x - this.x, p.y - this.y);
+                        if (dist < closestDist && dist < 400) {
+                            closestDist = dist;
+                            closest = p;
+                        }
+                    };
+
+                    if (player && player !== this) checkPlayer(player);
+                    bots.forEach(b => {
+                        if (b !== this) checkPlayer(b);
+                    });
+
+                    this.target = closest;
+                }
+
+                // Combat behavior
+                if (this.target && !this.target.dead) {
+                    const dx = this.target.x - this.x;
+                    const dy = this.target.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    // Aim at target
+                    this.angle = Math.atan2(dy, dx);
+
+                    // Move toward or away from target
+                    if (dist > 200) {
+                        this.move(dx / dist, dy / dist);
+                    } else if (dist < 100) {
+                        this.move(-dx / dist, -dy / dist);
+                    } else {
+                        // Strafe
+                        const strafeAngle = this.angle + Math.PI / 2;
+                        this.move(Math.cos(strafeAngle), Math.sin(strafeAngle));
+                    }
+
+                    // Shoot at target
+                    if (dist < 300) {
+                        this.shoot();
+                    }
+                } else {
+                    // Wander
+                    if (this.aiTimer % 120 === 0) {
+                        this.angle = Math.random() * Math.PI * 2;
+                    }
+                    this.move(Math.cos(this.angle) * 0.5, Math.sin(this.angle) * 0.5);
+                }
+            }
+
+            move(dx, dy) {
+                const newX = this.x + dx * this.speed;
+                const newY = this.y + dy * this.speed;
+
+                // Check world bounds
+                if (newX - this.size < 0 || newX + this.size > game.worldSize) dx = 0;
+                if (newY - this.size < 0 || newY + this.size > game.worldSize) dy = 0;
+
+                // Check building collision
+                let canMove = true;
+                buildings.forEach(building => {
+                    if (this.checkBuildingCollision(newX, newY, building)) {
+                        canMove = false;
+                    }
+                });
+
+                if (canMove) {
+                    this.x = newX;
+                    this.y = newY;
+                }
+
+                // Check weapon pickup
+                weapons = weapons.filter(weapon => {
+                    const dist = Math.hypot(weapon.x - this.x, weapon.y - this.y);
+                    if (dist < 30) {
+                        this.weapon = weapon.type;
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            checkBuildingCollision(x, y, building) {
+                return x + this.size > building.x &&
+                       x - this.size < building.x + building.width &&
+                       y + this.size > building.y &&
+                       y - this.size < building.y + building.height;
+            }
+
+            shoot() {
+                if (!this.weapon || this.dead) return;
+
+                const now = Date.now();
+                const weaponData = WEAPONS[this.weapon];
+
+                if (now - this.lastShot < weaponData.fireRate) return;
+
+                this.lastShot = now;
+
+                const pellets = weaponData.pellets || 1;
+
+                for (let i = 0; i < pellets; i++) {
+                    const spread = (Math.random() - 0.5) * weaponData.spread;
+                    const angle = this.angle + spread;
+
+                    bullets.push(new Bullet(
+                        this.x + Math.cos(angle) * this.size,
+                        this.y + Math.sin(angle) * this.size,
+                        angle,
+                        weaponData.bulletSpeed,
+                        weaponData.damage,
+                        this,
+                        weaponData.color
+                    ));
+                }
+            }
+
+            damage(amount, attacker) {
+                if (this.dead) return;
+
+                this.health -= amount;
+
+                if (this.health <= 0) {
+                    this.health = 0;
+                    this.dead = true;
+
+                    if (attacker && attacker !== this) {
+                        attacker.kills++;
+                        addKillMessage(attacker.name, this.name, attacker.weapon);
+                    }
+
+                    // Drop weapon
+                    if (this.weapon) {
+                        weapons.push({
+                            x: this.x,
+                            y: this.y,
+                            type: this.weapon
+                        });
+                    }
+
+                    if (this.isPlayer) {
+                        showDeathScreen();
+                    }
+                }
+            }
+
+            draw() {
+                if (this.dead) return;
+
+                // Draw player circle
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x - game.camera.x, this.y - game.camera.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw direction indicator
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(this.x - game.camera.x, this.y - game.camera.y);
+                ctx.lineTo(
+                    this.x - game.camera.x + Math.cos(this.angle) * this.size * 1.5,
+                    this.y - game.camera.y + Math.sin(this.angle) * this.size * 1.5
+                );
+                ctx.stroke();
+
+                // Draw weapon
+                if (this.weapon) {
+                    const weaponData = WEAPONS[this.weapon];
+                    ctx.fillStyle = weaponData.color;
+                    ctx.fillRect(
+                        this.x - game.camera.x + Math.cos(this.angle) * 15 - 3,
+                        this.y - game.camera.y + Math.sin(this.angle) * 15 - 3,
+                        15, 6
+                    );
+                }
+
+                // Draw health bar
+                const barWidth = 40;
+                const barHeight = 5;
+                const healthPercent = this.health / this.maxHealth;
+
+                ctx.fillStyle = '#333';
+                ctx.fillRect(
+                    this.x - game.camera.x - barWidth / 2,
+                    this.y - game.camera.y - this.size - 15,
+                    barWidth, barHeight
+                );
+
+                ctx.fillStyle = healthPercent > 0.5 ? '#4CAF50' : healthPercent > 0.25 ? '#FFC107' : '#F44336';
+                ctx.fillRect(
+                    this.x - game.camera.x - barWidth / 2,
+                    this.y - game.camera.y - this.size - 15,
+                    barWidth * healthPercent, barHeight
+                );
+
+                // Draw name
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.name, this.x - game.camera.x, this.y - game.camera.y - this.size - 20);
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, angle, speed, damage, owner, color) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.speed = speed;
+                this.damage = damage;
+                this.owner = owner;
+                this.color = color;
+                this.dead = false;
+                this.size = 4;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+
+                // Check world bounds
+                if (this.x < 0 || this.x > game.worldSize || this.y < 0 || this.y > game.worldSize) {
+                    this.dead = true;
+                    return;
+                }
+
+                // Check building collision
+                buildings.forEach(building => {
+                    if (this.x > building.x && this.x < building.x + building.width &&
+                        this.y > building.y && this.y < building.y + building.height) {
+                        this.dead = true;
+                    }
+                });
+
+                // Check player collision
+                const checkHit = (p) => {
+                    if (p.dead || p === this.owner) return;
+                    const dist = Math.hypot(p.x - this.x, p.y - this.y);
+                    if (dist < p.size) {
+                        p.damage(this.damage, this.owner);
+                        this.dead = true;
+                    }
+                };
+
+                if (player) checkHit(player);
+                bots.forEach(checkHit);
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x - game.camera.x, this.y - game.camera.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Game objects
+        let buildings = [];
+        let weapons = [];
+        let bullets = [];
+        let bots = [];
+
+        // Generate buildings
+        function generateBuildings() {
+            buildings = [];
+            const buildingCount = 25;
+
+            for (let i = 0; i < buildingCount; i++) {
+                const width = 100 + Math.random() * 150;
+                const height = 100 + Math.random() * 150;
+                const x = Math.random() * (game.worldSize - width);
+                const y = Math.random() * (game.worldSize - height);
+
+                buildings.push({
+                    x, y, width, height,
+                    color: `rgb(${100 + Math.random() * 50}, ${80 + Math.random() * 40}, ${60 + Math.random() * 30})`
+                });
+            }
+        }
+
+        // Generate weapons
+        function generateWeapons() {
+            weapons = [];
+            const weaponTypes = Object.keys(WEAPONS);
+
+            for (let i = 0; i < 40; i++) {
+                weapons.push({
+                    x: Math.random() * game.worldSize,
+                    y: Math.random() * game.worldSize,
+                    type: weaponTypes[Math.floor(Math.random() * weaponTypes.length)]
+                });
+            }
+        }
+
+        // Generate bots
+        function generateBots() {
+            bots = [];
+            const botNames = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Ghost', 'Hunter',
+                             'Intel', 'Joker', 'Killer', 'Lancer', 'Maverick', 'Ninja', 'Omega'];
+
+            for (let i = 0; i < 10; i++) {
+                bots.push(new Player(
+                    Math.random() * game.worldSize,
+                    Math.random() * game.worldSize,
+                    botNames[i % botNames.length] + (Math.floor(i / botNames.length) + 1),
+                    false
+                ));
+            }
+        }
+
+        // Initialize game
+        function initGame() {
+            generateBuildings();
+            generateWeapons();
+            generateBots();
+
+            // Create player at random position
+            player = new Player(
+                game.worldSize / 2,
+                game.worldSize / 2,
+                game.playerName,
+                true
+            );
+
+            bullets = [];
+        }
+
+        // Update camera
+        function updateCamera() {
+            if (!player || player.dead) return;
+
+            game.camera.x = player.x - canvas.width / 2;
+            game.camera.y = player.y - canvas.height / 2;
+
+            // Clamp camera to world bounds
+            game.camera.x = Math.max(0, Math.min(game.camera.x, game.worldSize - canvas.width));
+            game.camera.y = Math.max(0, Math.min(game.camera.y, game.worldSize - canvas.height));
+        }
+
+        // Draw functions
+        function drawWorld() {
+            // Draw grass background
+            ctx.fillStyle = '#2d5016';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+
+            for (let x = -game.camera.x % gridSize; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = -game.camera.y % gridSize; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Draw buildings
+            buildings.forEach(building => {
+                ctx.fillStyle = building.color;
+                ctx.fillRect(
+                    building.x - game.camera.x,
+                    building.y - game.camera.y,
+                    building.width,
+                    building.height
+                );
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(
+                    building.x - game.camera.x,
+                    building.y - game.camera.y,
+                    building.width,
+                    building.height
+                );
+            });
+
+            // Draw weapons
+            weapons.forEach(weapon => {
+                const weaponData = WEAPONS[weapon.type];
+                ctx.fillStyle = weaponData.color;
+                ctx.shadowColor = weaponData.color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(weapon.x - game.camera.x, weapon.y - game.camera.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Draw weapon name
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(weaponData.name, weapon.x - game.camera.x, weapon.y - game.camera.y + 20);
+            });
+
+            // Draw bullets
+            bullets.forEach(bullet => bullet.draw());
+
+            // Draw players
+            bots.forEach(bot => bot.draw());
+            if (player) player.draw();
+        }
+
+        // Update UI
+        function updateUI() {
+            if (!player) return;
+
+            // Update health bar
+            const healthPercent = player.health / player.maxHealth;
+            document.getElementById('healthFill').style.width = (healthPercent * 100) + '%';
+            document.getElementById('healthFill').textContent = Math.ceil(player.health) + ' HP';
+
+            // Update weapon info
+            document.getElementById('currentWeapon').textContent = player.weapon ? WEAPONS[player.weapon].name : 'None';
+            document.getElementById('killCount').textContent = player.kills;
+
+            // Update leaderboard
+            const allPlayers = [player, ...bots].filter(p => !p.dead);
+            allPlayers.sort((a, b) => b.kills - a.kills);
+
+            const leaderboardList = document.getElementById('leaderboardList');
+            leaderboardList.innerHTML = allPlayers.slice(0, 10).map((p, i) =>
+                `<div class="leaderboard-entry ${p.isPlayer ? 'current-player' : ''}">
+                    ${i + 1}. ${p.name}: ${p.kills} kills
+                </div>`
+            ).join('');
+        }
+
+        // Kill feed
+        function addKillMessage(killer, victim, weapon) {
+            const killFeed = document.getElementById('killFeed');
+            const msg = document.createElement('div');
+            msg.className = 'kill-message';
+            msg.textContent = `${killer} eliminated ${victim} with ${WEAPONS[weapon].name}`;
+            killFeed.appendChild(msg);
+
+            setTimeout(() => msg.remove(), 5000);
+
+            // Keep only last 5 messages
+            while (killFeed.children.length > 5) {
+                killFeed.removeChild(killFeed.firstChild);
+            }
+        }
+
+        // Death screen
+        function showDeathScreen() {
+            const deathScreen = document.getElementById('deathScreen');
+            const finalStats = document.getElementById('finalStats');
+            finalStats.innerHTML = `
+                <p style="font-size: 24px; margin: 10px 0;">Kills: ${player.kills}</p>
+            `;
+            deathScreen.classList.add('show');
+            game.running = false;
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (!game.running) return;
+
+            // Update
+            if (player && !player.dead) {
+                player.update();
+            }
+
+            bots.forEach(bot => bot.update());
+            bullets.forEach(bullet => bullet.update());
+
+            bullets = bullets.filter(b => !b.dead);
+
+            // Respawn dead bots
+            bots.forEach((bot, index) => {
+                if (bot.dead) {
+                    setTimeout(() => {
+                        bots[index] = new Player(
+                            Math.random() * game.worldSize,
+                            Math.random() * game.worldSize,
+                            bot.name,
+                            false
+                        );
+                    }, 3000);
+                }
+            });
+
+            updateCamera();
+
+            // Draw
+            drawWorld();
+            updateUI();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        window.addEventListener('keydown', (e) => {
+            game.keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            game.keys[e.key] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            game.mouse.x = e.clientX;
+            game.mouse.y = e.clientY;
+            game.mouse.worldX = e.clientX + game.camera.x;
+            game.mouse.worldY = e.clientY + game.camera.y;
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            if (player && game.running) {
+                player.shoot();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Start button
+        document.getElementById('startButton').addEventListener('click', () => {
+            const nameInput = document.getElementById('playerName');
+            game.playerName = nameInput.value.trim() || 'Player';
+            document.getElementById('startScreen').style.display = 'none';
+            game.running = true;
+            game.started = true;
+            initGame();
+            gameLoop();
+        });
+
+        // Respawn button
+        document.getElementById('respawnButton').addEventListener('click', () => {
+            document.getElementById('deathScreen').classList.remove('show');
+            game.running = true;
+            initGame();
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
